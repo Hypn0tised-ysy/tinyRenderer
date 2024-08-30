@@ -3,6 +3,15 @@
 #include "tgaimage.h"
 #include <cmath>
 
+Vec3f BarycentricInterpolation(Vec2i &point, Vec2f &a, Vec2f &b,
+                               Vec2f &c) // 求三角形的重心坐标
+{
+  Vec3f v1(b.x - a.x, c.x - a.x, a.x - point.x);
+  Vec3f v2(b.y - a.y, c.y - a.y, a.y - point.y);
+  Vec3f BarycentricCoordinate = v1 ^ v2;
+  BarycentricCoordinate = BarycentricCoordinate / BarycentricCoordinate.z;
+  return BarycentricCoordinate;
+}
 void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color) {
   // steep or not, judge if the line is steep to get enough samples
   bool steep = false;
@@ -124,6 +133,53 @@ void drawTriangleBoundingBox( // bounding box
     for (int x = xMin; x <= xMax; x++) {
       if (insideTriangle(x, y, a, b, c))
         image.set(x, y, color);
+    }
+  }
+}
+void drawTriangleZBuffer( // bounding box
+    Vec3f *pts, TGAImage &image, TGAColor color,
+    float *zBuffer) // rasterize the triangle, fill it with the color assigned
+{
+  // determine the bounding area
+  int width = image.get_width(), height = image.get_height();
+  int x1 = pts[0].x, x2 = pts[1].x, x3 = pts[2].x;
+  int y1 = pts[0].y, y2 = pts[1].y, y3 = pts[2].y;
+
+  if (x1 < x2)
+    std::swap(x1, x2);
+  if (x1 < x3)
+    std::swap(x1, x3);
+  if (x2 < x3)
+    std::swap(x2, x3);
+  if (y1 < y2)
+    std::swap(y1, y2);
+  if (y1 < y3)
+    std::swap(y1, y3);
+  if (y2 < y3)
+    std::swap(y2, y3);
+  int xMax = x1, xMin = x3, yMax = y1, yMin = y3;
+  // iterate through the box and rasterize those pixels within the triangle
+  for (int y = yMin; y <= yMax; y++) {
+    for (int x = xMin; x <= xMax; x++) {
+      Vec2i a(pts[0].x, pts[0].y);
+      Vec2i b(pts[1].x, pts[1].y);
+      Vec2i c(pts[2].x, pts[2].y);
+      if (insideTriangle(x, y, a, b, c)) {
+        Vec2i point(x, y);
+        Vec2f screenCoordinate[3];
+        for (int i = 3; i--; screenCoordinate[i] = Vec2f(pts[i].x, pts[i].y))
+          ;
+        Vec3f bc =
+            BarycentricInterpolation(point, screenCoordinate[0],
+                                     screenCoordinate[1], screenCoordinate[2]);
+        float u = bc.x, v = bc.y;
+        float rz = (1 - u - v) * pts[0].z + u * pts[1].z +
+                   v * pts[2].z; // bc:barycentric coordinate
+        if (rz > zBuffer[x + y * width]) {
+          zBuffer[x + y * width] = rz;
+          image.set(x, y, color);
+        }
+      }
     }
   }
 }

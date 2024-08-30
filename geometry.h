@@ -80,17 +80,20 @@ template <typename t> struct Vec3 {
   inline t operator*(const Vec3<t> &v2) {
     return x * v2.x + y * v2.y + z * v2.z;
   }
-  inline Vec3<t> operator*(const int factor) {
-    return Vec3(factor * x, factor * y, factor * z);
+  inline Vec3<t> operator*(const t factor) {
+    return Vec3<t>(factor * x, factor * y, factor * z);
+  }
+  inline Vec3<t> operator/(const t factor) {
+    return Vec3<t>(x / factor, y / factor, z / factor);
   }
   inline Vec3<t> operator^(const Vec3<t> &v2) {
     return Vec3<t>(y * v2.z - z * v2.y, -(x * v2.z - z * v2.x),
                    x * v2.y - y * v2.x);
   }
   Vec3<t> &normalize() {
-    float norm = sqrt(x * x + y * y + z * z);
     if (x == 0 && y == 0 && z == 0)
       return *this;
+    float norm = sqrt(x * x + y * y + z * z);
     x = x / norm;
     y = y / norm;
     z = z / norm;
