@@ -25,6 +25,7 @@ template <typename t> struct Vec2 {
   };
   explicit Vec2() : x(0), y(0) {}
   Vec2(t _x, t _y) : x(_x), y(_y) {}
+  inline void operator=(const Vec2<t> &v2) { x = v2.x, y = v2.y; }
   inline Vec2<t> operator+(const Vec2<t> &v2) {
     return Vec2<t>(x + v2.x, y + v2.y);
   }
@@ -32,8 +33,8 @@ template <typename t> struct Vec2 {
     return Vec2<t>(x - v2.x, y - v2.y);
   }
   inline t operator*(const Vec2<t> &v2) { return x * v2.x + y * v2.y; }
-  inline Vec2<t> operator*(const int factor) {
-    return Vec2(factor * x, factor * y);
+  inline Vec2<t> operator*(const t factor) {
+    return Vec2<t>(factor * x, factor * y);
   }
   Vec2<t> &normalize() {
     float norm = x * x + y * y;

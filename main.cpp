@@ -18,7 +18,9 @@ const TGAColor white = TGAColor(255, 255, 255, 255);
 Model *model = NULL;
 constexpr int width = 800;
 constexpr int height = 800;
-Vec3f objToScreen(Vec3f &objCoordinate);
+
+Vec3f objToScreen(TGAImage &image, Vec3f &objCoordinate);
+Vec2i objVtToScreen(TGAImage &texture, Vec2f &vtCoordinate);
 void drawTriangle(
     Vec2i &a, Vec2i &b, Vec2i &c,
     TGAImage &image, // 这里TGAImage一定要传引用类型，否则画三角形画不到一张图上
@@ -30,7 +32,13 @@ void drawTriangleZBuffer( // bounding box
     Vec3f *pts, TGAImage &image, TGAColor color,
     float *zBuffer); // rasterize the triangle, fill it with the color assigned
 void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color);
-
+float getIntensity(Vec3f *objCoordinate, Vec3f &light);
+void rasterizeZbuffer(TGAImage &image, Model *model, Vec3f light,
+                      float *zBuffer);
+void rasterizeTexture(Model *model, TGAImage &image, TGAImage texture,
+                      float *zBuffer, Vec3f &light); // 渲染图像
+void rasterizeTexture(Model *model, TGAImage &image, TGAImage texture,
+                      float *zBuffer);
 int main(int argc, char **argv) {
   std::cerr << "commence program\n";
   // 处理命令行参数，不加参数则渲染默认的模型
@@ -42,6 +50,9 @@ int main(int argc, char **argv) {
   //
   Vec3f light(0, 0, 1);
   TGAImage image(width, height, TGAImage::RGB);
+  // texture
+  TGAImage texture;
+  texture.read_tga_file("../obj/african_head_diffuse.tga");
   // 初始化zBuffer
   float *zBuffer = new float[width * height];
   for (
@@ -50,43 +61,12 @@ int main(int argc, char **argv) {
           -std::numeric_limits<float>::
               max()) // 别用std::numeric_limits<float>::min()因为它表示的大于0的最小float
     ;
-  // 渲染图像
-  for (int i = 0; i < model->nface(); i++) {
-    std::vector<int> face = model->face(i);
-    float intensity = 0;
-    Vec3f objCoordinate[3];
-    Vec3f pts[3]; // pts[0] and pts[1] stands for screen coordinate, while
-                  // pts[2] is z coordinate in the obj file, pts stands for the
-                  // 3 points of the
-    for (int i = 0; i < 3; ++i) {
-      objCoordinate[i] =
-          Vec3f(model->vertex(face[i] - 1).x, model->vertex(face[i] - 1).y,
-                model->vertex(face[i] - 1).z);
-      pts[i] = objToScreen(objCoordinate[i]);
-    }
-    Vec3f side1 = objCoordinate[0] - objCoordinate[1],
-          side2 = objCoordinate[0] - objCoordinate[2];
-    Vec3f norm = (side1 ^ side2).normalize();
-    intensity = norm * light;
-    if (intensity > 0) {
-      drawTriangleZBuffer(
-          pts, image,
-          TGAColor(255 * intensity, 255 * intensity, 255 * intensity, 255),
-          zBuffer); // 能渲染出五颜六色的图像=v= \o/
-      std::cerr << "draw f" << i << "\n";
-    }
-  }
-  image.flip_vertically();
-  image.write_tga_file("./images/african_head_triangle_light_back.tga");
-  //
+  // rasterize
+  // rasterizeTexture(model, image, texture, zBuffer, light);
+  rasterizeTexture(model, image, texture, zBuffer, light);
+
   delete model;
   return 0;
-}
-Vec3f objToScreen(Vec3f &objCoordinate) {
-  Vec3f screen(int((objCoordinate.x + 1.0) * width / 2 + 0.5),
-               int((objCoordinate.y + 1.0) * height / 2 + 0.5),
-               objCoordinate.z);
-  return screen;
 }
 
 /* render colorful convex

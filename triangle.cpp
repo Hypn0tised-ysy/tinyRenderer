@@ -1,8 +1,27 @@
 #include "triangle.h"
 #include "geometry.h"
+#include "model.h"
 #include "tgaimage.h"
 #include <cmath>
-
+#include <iostream>
+Vec3f objToScreen(TGAImage &image, Vec3f &objCoordinate) {
+  int width = image.get_width();
+  int height = image.get_height();
+  Vec3f screen(int((objCoordinate.x + 1.0) * width / 2 + 0.5),
+               int((objCoordinate.y + 1.0) * height / 2 + 0.5),
+               objCoordinate.z);
+  return screen;
+}
+Vec2f objVtToScreen(TGAImage &texture, Vec2f &vtCoordinate) {
+  int width = texture.get_width();
+  int height = texture.get_height();
+  Vec2f uv(
+      vtCoordinate.u * width,
+      height -
+          vtCoordinate.v *
+              height); // 注意这里需要翻转y坐标，因为贴图的坐标原点在屏幕左下角
+  return uv;
+}
 Vec3f BarycentricInterpolation(Vec2i &point, Vec2f &a, Vec2f &b,
                                Vec2f &c) // 求三角形的重心坐标
 {
@@ -182,4 +201,152 @@ void drawTriangleZBuffer( // bounding box
       }
     }
   }
+}
+void drawTriangleTexture(Vec3f *pts, Vec2f *ptsVt, TGAImage &image,
+                         TGAImage texture, float *zBuffer, float intensity) {
+  int width = image.get_width(), height = image.get_height();
+  int x1 = pts[0].x, x2 = pts[1].x, x3 = pts[2].x;
+  int y1 = pts[0].y, y2 = pts[1].y, y3 = pts[2].y;
+
+  if (x1 < x2)
+    std::swap(x1, x2);
+  if (x1 < x3)
+    std::swap(x1, x3);
+  if (x2 < x3)
+    std::swap(x2, x3);
+  if (y1 < y2)
+    std::swap(y1, y2);
+  if (y1 < y3)
+    std::swap(y1, y3);
+  if (y2 < y3)
+    std::swap(y2, y3);
+  int xMax = x1, xMin = x3, yMax = y1, yMin = y3;
+  // iterate through the box and rasterize those pixels within the triangle
+  for (int y = yMin; y <= yMax; y++) {
+    for (int x = xMin; x <= xMax; x++) {
+      Vec2i a(pts[0].x, pts[0].y);
+      Vec2i b(pts[1].x, pts[1].y);
+      Vec2i c(pts[2].x, pts[2].y);
+      if (insideTriangle(x, y, a, b, c)) {
+        Vec2i point(x, y);
+        Vec2f screenCoordinate[3];
+        for (int i = 3; i--; screenCoordinate[i] = Vec2f(pts[i].x, pts[i].y))
+          ;
+        Vec3f bc =
+            BarycentricInterpolation(point, screenCoordinate[0],
+                                     screenCoordinate[1], screenCoordinate[2]);
+        float u = bc.x, v = bc.y;
+        Vec2f uvCoordinate =
+            (1 - u - v) * ptsVt[0] + u * ptsVt[1] + v * ptsVt[2];
+
+        TGAColor color =
+            texture.get(int(uvCoordinate.u + 0.5), int(uvCoordinate.v + 0.5));
+        TGAColor colorLight(color.r * intensity, color.g * intensity,
+                            color.b * intensity, 255);
+        float rz = (1 - u - v) * pts[0].z + u * pts[1].z +
+                   v * pts[2].z; // bc:barycentric coordinate
+        if (rz > zBuffer[x + y * width]) {
+          zBuffer[x + y * width] = rz;
+          image.set(x, y, colorLight);
+        }
+      }
+    }
+  }
+}
+
+float getIntensity(Vec3f *objCoordinate, Vec3f &light) {
+  Vec3f side1 = objCoordinate[0] - objCoordinate[1],
+        side2 = objCoordinate[0] - objCoordinate[2];
+  Vec3f norm = (side1 ^ side2).normalize();
+  float intensity = norm * light;
+  return intensity;
+}
+void rasterizeZbuffer(TGAImage &image, Model *model, Vec3f light,
+                      float *zBuffer) {
+  // 渲染图像
+  for (int i = 0; i < model->nface(); i++) {
+    std::vector<int> face = model->face(i);
+    float intensity = 0;
+    Vec3f objCoordinate[3];
+    Vec3f pts[3]; // pts[0] and pts[1] stands for screen coordinate, while
+    // pts[2] is z coordinate in the obj file, pts stands for the
+    // 3 points of the
+    for (int i = 0; i < 3; ++i) {
+      objCoordinate[i] =
+          Vec3f(model->vertex(face[i] - 1).x, model->vertex(face[i] - 1).y,
+                model->vertex(face[i] - 1).z);
+      pts[i] = objToScreen(image, objCoordinate[i]);
+    }
+    intensity = getIntensity(objCoordinate, light);
+    if (intensity > 0) {
+      drawTriangleZBuffer(
+          pts, image,
+          TGAColor(255 * intensity, 255 * intensity, 255 * intensity, 255),
+          zBuffer);
+      std::cerr << "draw f" << i << "\n";
+    }
+  }
+  image.flip_vertically();
+  image.write_tga_file("./images/african_head_triangle_light_back.tga");
+}
+void rasterizeTexture(Model *model, TGAImage &image, TGAImage texture,
+                      float *zBuffer, Vec3f &light) { // 渲染图像
+  for (int i = 0; i < model->nface(); i++) {
+    std::vector<int> face = model->face(i);
+    std::vector<int> faceVt = model->faceVt(i);
+    float intensity = 0;
+    Vec3f objCoordinate[3];
+    Vec2f vtCoordinate[3];
+    Vec3f pts[3]; // pts[0] and pts[1] stands for screen coordinate, while
+    // pts[2] is z coordinate in the obj file, pts stands for the
+    // 3 points of the
+    Vec2f ptsVt[3];
+    for (int i = 0; i < 3; ++i) {
+      objCoordinate[i] =
+          Vec3f(model->vertex(face[i] - 1).x, model->vertex(face[i] - 1).y,
+                model->vertex(face[i] - 1).z);
+      vtCoordinate[i] = Vec2f(model->texture(faceVt[i] - 1).u,
+                              model->texture(faceVt[i] - 1).v);
+      pts[i] = objToScreen(image, objCoordinate[i]);
+
+      ptsVt[i] = objVtToScreen(texture, vtCoordinate[i]);
+    }
+    intensity = getIntensity(objCoordinate, light);
+    if (intensity > 0) {
+      drawTriangleTexture(pts, ptsVt, image, texture, zBuffer,
+                          intensity); // 能渲染出五颜六色的图像=v= \o/
+      std::cerr << "draw f" << i << "\n";
+    }
+  }
+  image.flip_vertically();
+  image.write_tga_file("./images/african_head_triangle_light_back.tga");
+}
+void rasterizeTexture(Model *model, TGAImage &image, TGAImage texture,
+                      float *zBuffer) { // 渲染图像,不加光照的版本
+  for (int i = 0; i < model->nface(); i++) {
+    std::vector<int> face = model->face(i);
+    std::vector<int> faceVt = model->faceVt(i);
+    float intensity = 0;
+    Vec3f objCoordinate[3];
+    Vec2f vtCoordinate[3];
+    Vec3f pts[3]; // pts[0] and pts[1] stands for screen coordinate, while
+    // pts[2] is z coordinate in the obj file, pts stands for the
+    // 3 points of the
+    Vec2f ptsVt[3];
+    for (int i = 0; i < 3; ++i) {
+      objCoordinate[i] =
+          Vec3f(model->vertex(face[i] - 1).x, model->vertex(face[i] - 1).y,
+                model->vertex(face[i] - 1).z);
+      vtCoordinate[i] = Vec2f(model->texture(faceVt[i] - 1).u,
+                              model->texture(faceVt[i] - 1).v);
+      pts[i] = objToScreen(image, objCoordinate[i]);
+
+      ptsVt[i] = objVtToScreen(texture, vtCoordinate[i]);
+    }
+    drawTriangleTexture(pts, ptsVt, image, texture, zBuffer,
+                        1.0); // 能渲染出五颜六色的图像=v= \o/
+    std::cerr << "draw f" << i << "\n";
+  }
+  image.flip_vertically();
+  image.write_tga_file("./images/african_head_triangle_light_back.tga");
 }
