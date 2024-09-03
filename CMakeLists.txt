@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 # 添加源文件
-add_executable(TriangleRenderer main.cpp triangle.cpp tgaimage.cpp model.cpp)
+add_executable(TriangleRenderer main.cpp triangle.cpp tgaimage.cpp model.cpp geometry.cpp)
 
 
 

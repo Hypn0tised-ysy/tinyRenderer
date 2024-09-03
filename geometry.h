@@ -2,6 +2,7 @@
 #define __MYGEOMETRY_H__
 #include <cmath>
 #include <ostream>
+#include <vector>
 // 首先是二阶向量
 /*
 向量功能：
@@ -37,7 +38,7 @@ template <typename t> struct Vec2 {
     return Vec2<t>(factor * x, factor * y);
   }
   Vec2<t> &normalize() {
-    float norm = x * x + y * y;
+    float norm = sqrt(x * x + y * y);
     if (x == 0 && y == 0) // 0 vector
       return *this;
     x = x / norm;
@@ -117,4 +118,25 @@ typedef Vec2<float> Vec2f;
 typedef Vec2<int> Vec2i;
 typedef Vec3<float> Vec3f;
 typedef Vec3<int> Vec3i;
+constexpr int defaultRank = 4;
+class Matrix {
+private:
+  std::vector<std::vector<float>> m;
+  int row, column;
+
+public:
+  Matrix(int _row = defaultRank, int _column = defaultRank)
+      : m(std::vector<std::vector<float>>(_row,
+                                          std::vector<float>(_column, 0.0f))),
+        row(_row), column(_column){};
+  Vec3f m2v(); // 把四维homogenous坐标转化回三维坐标
+  Matrix operator*(Matrix m2);
+  Matrix transpose(); // 转置
+  Matrix inverse();   // 求逆
+  std::vector<float> &operator[](const int row);
+  friend std::ostream &operator<<(std::ostream &out,
+                                  const Matrix &m); // 输出矩阵元素
+};
+Matrix v2m(Vec3f &vec); // 把三维坐标转化为四维的homogenous坐标
+Matrix identity(int dimension); // 返回阶数为dimension的标准矩阵
 #endif
