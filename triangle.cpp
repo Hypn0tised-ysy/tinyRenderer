@@ -2,8 +2,10 @@
 #include "geometry.h"
 #include "model.h"
 #include "tgaimage.h"
+#include <algorithm>
 #include <cmath>
 #include <iostream>
+
 float getIntensity(Vec3f *objCoordinate, Vec3f &light) {
   Vec3f side1 = objCoordinate[0] - objCoordinate[1],
         side2 = objCoordinate[0] - objCoordinate[2];
@@ -34,9 +36,20 @@ Vec3f BarycentricInterpolation(Vec2i &point, Vec2f &a, Vec2f &b,
 {
   Vec3f v1(b.x - a.x, c.x - a.x, a.x - point.x);
   Vec3f v2(b.y - a.y, c.y - a.y, a.y - point.y);
-  Vec3f BarycentricCoordinate = v1 ^ v2;
-  BarycentricCoordinate = BarycentricCoordinate / BarycentricCoordinate.z;
-  return BarycentricCoordinate;
+  Vec3f bc = v1 ^ v2;
+  // 因为点坐标都是int类型，所以叉乘之后的向量模一定大于等于1，如果模小于1，说明是零向量，此时abc不构成三角形
+  float const EPSILON = 1e-2;
+  if (bc.z < EPSILON)
+    return Vec3f(-1, -1, -1);
+  bc = bc / bc.z;
+  return Vec3f(1.0 - (bc.x + bc.y), bc.x, bc.y);
+}
+Vec3f BarycentricInterpolation(Triangle &t, Vec2i &point) // 求三角形的重心坐标
+{
+  Vec2f a = Vec2f(t.screen_coordinate[0].x, t.screen_coordinate[0].y),
+        b = Vec2f(t.screen_coordinate[1].x, t.screen_coordinate[1].y),
+        c = Vec2f(t.screen_coordinate[2].x, t.screen_coordinate[2].y);
+  return BarycentricInterpolation(point, a, b, c);
 }
 void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color) {
   // steep or not, judge if the line is steep to get enough samples
@@ -118,6 +131,7 @@ void drawTriangle( // 逐行扫描
     line(x_1, y, x_2, y, image, color);
   }
 }
+
 bool insideTriangle(int x, int y, const Vec2i &a, const Vec2i &b,
                     const Vec2i &c) {
   Vec3i A(a.x, a.y, 0);
@@ -133,6 +147,13 @@ bool insideTriangle(int x, int y, const Vec2i &a, const Vec2i &b,
     return true;
   }
   return false;
+}
+bool insideTriangle(Triangle &t, int x, int y) {
+  Vec2i a = Vec2i(t.screen_coordinate[0].x, t.screen_coordinate[0].y);
+
+  Vec2i b = Vec2i(t.screen_coordinate[1].x, t.screen_coordinate[1].y);
+  Vec2i c = Vec2i(t.screen_coordinate[2].x, t.screen_coordinate[2].y);
+  return insideTriangle(x, y, a, b, c);
 }
 void drawTriangleBoundingBox( // bounding box
     Vec2i &a, Vec2i &b, Vec2i &c, TGAImage &image,
@@ -288,4 +309,70 @@ void rasterizeZbuffer(TGAImage &image, Model *model, Vec3f light,
   }
   image.flip_vertically();
   image.write_tga_file("./images/african_head_triangle_light_back.tga");
+}
+void drawTriangle(Triangle &t, TGAImage &image, TGAImage &texture,
+                  float *zBuffer, float *intensity) {
+  int width = image.get_width(), height = image.get_height();
+  int x1 = t.screen_coordinate[0].x, x2 = t.screen_coordinate[1].x,
+      x3 = t.screen_coordinate[2].x;
+  int y1 = t.screen_coordinate[0].y, y2 = t.screen_coordinate[1].y,
+      y3 = t.screen_coordinate[2].y;
+  int xMax = std::max(x1, std::max(x2, x3)),
+      xMin = std::min(x1, std::min(x2, x3));
+  int yMax = std::max(y1, std::max(y2, y3)),
+      yMin = std::min(y1, std::min(y2, y3));
+  // iterate through the box and rasterize those pixels within the triangle
+  for (int y = yMin; y <= yMax; y++) {
+    for (int x = xMin; x <= xMax; x++) {
+      if (insideTriangle(t, x, y)) {
+        Vec2i point(x, y);
+        Vec3f bc = BarycentricInterpolation(t, point);
+        float u = bc.y, v = bc.z;
+        if (bc.x < 0 || bc.y < 0 ||
+            bc.z <
+                0) // 这里不要用（1-u-v）<0这个条件，因为当点落在三角形边上时因为浮点数的计算误差，（1-u-v）虽然应该是0，但有时会<0
+          continue;
+        Vec2f uvCoordinate = (1 - u - v) * t.texture_coordinate[0] +
+                             u * t.texture_coordinate[1] +
+                             v * t.texture_coordinate[2];
+        float r_intensity =
+            (1 - u - v) * intensity[0] + u * intensity[1] + v * intensity[2];
+        TGAColor color =
+            texture.get(int(uvCoordinate.u + 0.5), int(uvCoordinate.v + 0.5));
+        TGAColor colorLight(color.r * r_intensity, color.g * r_intensity,
+                            color.b * r_intensity, 255);
+        // TGAColor colorLight(r_intensity * 255, r_intensity * 255,
+        //                     r_intensity * 255, 255);
+        float rz = (1 - u - v) * t.screen_coordinate[0].z +
+                   u * t.screen_coordinate[1].z +
+                   v * t.screen_coordinate[2].z; // bc:barycentric coordinate
+        if (rz > zBuffer[x + y * width]) {
+          zBuffer[x + y * width] = rz;
+          image.set(x, y, colorLight);
+        }
+      }
+    }
+  }
+}
+void lineframe(TGAImage &image, Model *model, Matrix &trans) {
+
+  for (int i = 0; i < model->nface(); i++) {
+    Triangle t = model->getTriangle(i);
+    float intensity[3];
+    Vec3i screen_coordinate[3];
+    for (int j = 0; j < 3; j++) {
+      screen_coordinate[j] = (trans * v2m(t.world_coordinate[j])).m2v();
+    }
+    t.setScreen(screen_coordinate);
+
+    line(screen_coordinate[0].x, screen_coordinate[0].y, screen_coordinate[1].x,
+         screen_coordinate[1].y, image, TGAColor(255, 255, 255, 255));
+    line(screen_coordinate[0].x, screen_coordinate[0].y, screen_coordinate[2].x,
+         screen_coordinate[2].y, image, TGAColor(255, 255, 255, 255));
+    line(screen_coordinate[1].x, screen_coordinate[1].y, screen_coordinate[2].x,
+         screen_coordinate[2].y, image, TGAColor(255, 255, 255, 255));
+    std::cerr << "draw f" << i << "\n";
+  }
+  image.flip_vertically();
+  image.write_tga_file("./images/african_head_lineframe.tga");
 }

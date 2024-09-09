@@ -1,10 +1,18 @@
 #include "geometry.h"
 #include <cassert>
-std::vector<float> &Matrix::operator[](const int r) {
-  assert(r >= 0 && r < row);
-  return m[r];
-}
+// 显式特化模板：从 Vec3<float> 转换到 Vec3<int>
+template <>
+template <>
+Vec3<int>::Vec3(const Vec3<float> &v)
+    : x(static_cast<int>(v.x + 0.5)), y(static_cast<int>(v.y + 0.5)),
+      z(static_cast<int>(v.z + 0.5)) {}
 
+// 显式特化模板：从 Vec3<int> 转换到 Vec3<float>
+template <>
+template <>
+Vec3<float>::Vec3(const Vec3<int> &v)
+    : x(static_cast<float>(v.x)), y(static_cast<float>(v.y)),
+      z(static_cast<float>(v.z)) {}
 Matrix identity(int dimension) {
   Matrix matrix(dimension, dimension);
   for (int row = 0; row < dimension; row++) {
@@ -38,4 +46,22 @@ Matrix Matrix::operator*(Matrix m2) {
   }
   return result;
 }
-std::ostream &operator<<(std::ostream &out, const Matrix &m) { return out; }
+Matrix Matrix::transpose() {
+  Matrix result(column, row);
+  for (int r = 0; r < row; ++r) {
+    for (int c = 0; c < column; ++c) {
+      result[c][r] = m[r][c];
+    }
+  }
+  return result;
+}
+std::ostream &operator<<(std::ostream &out, Matrix &m) {
+  for (int r = 0; r < m.row; r++) {
+    for (int j = 0; j < m.column; j++) {
+      out << m[r][j] << "\t";
+    }
+    out << "\n";
+  }
+  out << "\n";
+  return out;
+}

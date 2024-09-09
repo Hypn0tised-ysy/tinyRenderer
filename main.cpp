@@ -20,38 +20,24 @@ constexpr int width = 800;
 constexpr int height = 800;
 constexpr int depth = 255; // 把z坐标投影到[0,255]，输出z-buffer图像以供调试
 
+void lineframe(TGAImage &image, Model *model, Matrix &trans);
 Vec3f objToScreen(TGAImage &image, Vec3f &objCoordinate);
 Vec2f objVtToScreen(TGAImage &texture, Vec2f &vtCoordinate);
-void drawTriangle(
-    Vec2i &a, Vec2i &b, Vec2i &c,
-    TGAImage &image, // 这里TGAImage一定要传引用类型，否则画三角形画不到一张图上
-    TGAColor color); // rasterize the triangle, fill it with the color assigned
-void drawTriangleBoundingBox( // bounding box
-    Vec2i &a, Vec2i &b, Vec2i &c, TGAImage &image,
-    TGAColor color); // rasterize the triangle, fill it with the color assigned
-void drawTriangleZBuffer( // bounding box
-    Vec3f *pts, TGAImage &image, TGAColor color,
-    float *zBuffer); // rasterize the triangle, fill it with the color assigned
-void drawTriangleTexture(Vec3f *pts, Vec2f *ptsVt, TGAImage &image,
-                         TGAImage texture, float *zBuffer, float intensity);
-void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color);
-float getIntensity(Vec3f *objCoordinate, Vec3f &light);
+void drawTriangle(Triangle &t, TGAImage &image, TGAImage &texture,
+                  float *zBuffer, float *intensity);
 Matrix identity(int dimension); // 返回阶数为dimension的标准矩阵
-void rasterizeZbuffer(TGAImage &image, Model *model, Vec3f light,
-                      float *zBuffer);
-void rasterizeTexture(Model *model, TGAImage &image, TGAImage texture,
-                      float *zBuffer, Vec3f &light); // 渲染图像
-void rasterizeTexture(Model *model, TGAImage &image, TGAImage texture,
-                      float *zBuffer);
-void rasterizeCamera(Model *model, TGAImage &image, TGAImage texture,
-                     float *zBuffer, Vec3f &camera, Vec3f &light);
+void rasterize(Model *model, TGAImage &image, TGAImage texture, float *zBuffer,
+               Vec3f &light, Matrix &trans);
 Vec3f round(Vec3f vec); // 四舍五入
-Matrix viewport(int x, int y, int width,
+Matrix Viewport(int x, int y, int width,
                 int height); // 将世界坐标转换到屏幕坐标的矩阵
 Matrix
-projection(Vec3f camera); // 投影矩阵，将图像由camera的位置投影到z=0的平面
+Projection(Vec3f eye,
+           Vec3f center); // 投影矩阵，将图像由camera的位置投影到z=0的平面
+inline Matrix ModelMatrix() { return identity(4); }
+Matrix View(Vec3f &eye, Vec3f &center, Vec3f &up); // 进行摄像机变换的矩阵
 inline bool withinScreen(TGAImage image,
-                         Vec3f *pts) { // 判断三角形是不是在屏幕内
+                         Vec3i *pts) { // 判断三角形是不是在屏幕内
   int width = image.get_width(), height = image.get_height();
   return (pts[0].x >= 0 && pts[0].x <= width) &&
          (pts[0].y >= 0 && pts[0].y <= height) &&
@@ -64,13 +50,15 @@ int main(int argc, char **argv) {
   std::cerr << "commence program\n";
   // 处理命令行参数，不加参数则渲染默认的模型
   if (argc == 2) {
-    model = new Model(argv[1]);
+    model = new class Model(argv[1]);
   } else {
-    model = new Model("../obj/african_head.obj");
+    model = new class Model("../obj/african_head.obj");
   }
   //
-  Vec3f camera(0, 0, 3);
-  Vec3f light(0, 0, 1);
+  Vec3f camera(1, 1, 3);
+  Vec3f center(0, 0, 0);
+  Vec3f up(0, 1, 0);
+  Vec3f light = Vec3f(1, -1, 1).normalize();
   TGAImage image(width, height, TGAImage::RGB);
   // texture
   TGAImage texture;
@@ -83,9 +71,19 @@ int main(int argc, char **argv) {
           -std::numeric_limits<float>::
               max()) // 别用std::numeric_limits<float>::min()因为它表示的大于0的最小float
     ;
+  Matrix model_matrix = ModelMatrix();
+  Matrix view = View(camera, center, up);
+  Matrix projection = Projection(camera, center);
+  Matrix viewport =
+      Viewport(width / 8, height / 8, width * 3 / 4, height * 3 / 4);
+
+  Matrix trans = viewport * projection * view * model_matrix;
+  TGAImage frame(800, 800, TGAImage::GRAYSCALE);
+  lineframe(frame, model, trans);
+  rasterize(model, image, texture, zBuffer, light, trans);
   // rasterize
   // rasterizeTexture(model, image, texture, zBuffer, light);
-  rasterizeCamera(model, image, texture, zBuffer, camera, light);
+  // rasterizeCamera(model, image, texture, zBuffer, camera, light);
   // dump z-buffer (debugging purposes only)
   TGAImage zbimage(width, height, TGAImage::GRAYSCALE);
   for (int i = 0; i < width; i++) {
@@ -97,10 +95,11 @@ int main(int argc, char **argv) {
                              // corner of the image
   zbimage.write_tga_file("./images/zbuffer.tga");
   //
+  std::cout << model_matrix << view << projection << viewport;
   delete model;
   return 0;
 }
-Matrix viewport(int x, int y, int width,
+Matrix Viewport(int x, int y, int width,
                 int height) { //(x,y)是坐标原点，width和height分别是
   Matrix viewport = identity(4);
   viewport[0][0] = width / 2.0;
@@ -111,76 +110,54 @@ Matrix viewport(int x, int y, int width,
   viewport[2][3] = depth / 2.0;
   return viewport;
 }
-Matrix projection(
+Matrix Projection(
+    Vec3f eye,
     Vec3f
-        camera) { // 投影矩阵在homogenous坐标下可以与待投影的点无关，需要一点小小的数学技巧
+        center) { // 投影矩阵在homogenous坐标下可以与待投影的点无关，需要一点小小的数学技巧
   Matrix projection = identity(4);
-  projection[3][2] = -1.0 / camera.z;
+  projection[3][2] = -1.0 / (center - eye).norm();
   return projection;
-}
-void rasterizeCamera(Model *model, TGAImage &image, TGAImage texture,
-                     float *zBuffer, Vec3f &camera,
-                     Vec3f &light) { // 渲染图像,不加光照的版本
-  for (int i = 0; i < model->nface(); i++) {
-    std::vector<int> face = model->face(i);
-    std::vector<int> faceVt = model->faceVt(i);
-    float intensity = 0;
-    Vec3f objCoordinate[3];
-    Vec2f vtCoordinate[3];
-    Vec3f pts[3]; // pts[0] and pts[1] stands for screen coordinate, while
-    // pts[2] is z coordinate in the obj file, pts stands for the
-    // 3 points of the
-    Vec2f ptsVt[3];
-    for (int i = 0; i < 3; ++i) {
-      objCoordinate[i] =
-          Vec3f(model->vertex(face[i] - 1).x, model->vertex(face[i] - 1).y,
-                model->vertex(face[i] - 1).z);
-      vtCoordinate[i] = Vec2f(model->texture(faceVt[i] - 1).u,
-                              model->texture(faceVt[i] - 1).v);
-      Matrix proj = projection(camera);
-      Matrix view =
-          viewport(width / 8, height / 8, width * 3 / 4, height * 3 / 4);
-      pts[i] = round((view * proj * v2m(objCoordinate[i])).m2v());
-
-      ptsVt[i] = objVtToScreen(texture, vtCoordinate[i]);
-    }
-    if (withinScreen(image, pts))
-      drawTriangleTexture(pts, ptsVt, image, texture, zBuffer,
-                          1.0); // 能渲染出五颜六色的图像=v= \o/
-    std::cerr << "draw f" << i << "\n";
-  }
-  image.flip_vertically();
-  image.write_tga_file("./images/african_head_triangle_light_back.tga");
 }
 Vec3f round(Vec3f vec) {
   Vec3f result(int(vec.x + 0.5), int(vec.y + 0.5), int(vec.z + 0.5));
   return result;
 }
+Matrix View(Vec3f &eye, Vec3f &center, Vec3f &up) {
+  Matrix result, translation = identity(4), rotation = identity(4);
+  for (int i = 0; i < 3; i++) {
+    translation[i][3] = -center[i];
+  }
+  Vec3f u, v, w, gaze = center - eye;
+  w = (-gaze).normalize();
+  u = (up ^ w).normalize();
+  v = w ^ u;
+  for (int i = 0; i < 3; i++) {
+    rotation[0][i] = u[i];
+    rotation[1][i] = v[i];
+    rotation[2][i] = w[i];
+  }
+  result = rotation * translation;
+  return result;
+}
+void rasterize(Model *model, TGAImage &image, TGAImage texture, float *zBuffer,
+               Vec3f &light, Matrix &trans) {
 
-/* render colorful convex
   for (int i = 0; i < model->nface(); i++) {
-    std::vector<int> face = model->face(i);
+    Triangle t = model->getTriangle(i);
+    float intensity[3];
+    Vec3i screen_coordinate[3];
     for (int j = 0; j < 3; j++) {
-      Vec3f p1 = model->vertex(face[j] - 1);
-      Vec3f p2 = model->vertex(face[(j + 1) % 3] - 1);
-      int x0 = (p1.x + 1.0) * width / 2.0;
-      int x1 = (p2.x + 1.0) * width / 2.0;
-      int y0 = (p1.y + 1.0) * height / 2.0;
-      int y1 = (p2.y + 1.0) * height / 2.0;
-      line(x0, y0, x1, y1, image, white);
+      intensity[j] = t.normal_coordinate[j].normalize() * light;
+      if (intensity[j] < 0)
+        intensity[j] = 0;
+      screen_coordinate[j] = (trans * v2m(t.world_coordinate[j])).m2v();
     }
-    Vec2i points[3];
-    for (int j = 0; j < 3; j++) {
-      int x = (model->vertex(face[j] - 1).x + 1.0) * width / 2.0;
-      int y = (model->vertex(face[j] - 1).y + 1.0) * height / 2.0;
-      points[j] = Vec2i(x, y);
-    }
-    drawTriangleBoundingBox(points[0], points[1], points[2], image,
-                            TGAColor(rand() % 256, rand() % 256, rand() % 256,
-                                     255)); // 能渲染出五颜六色的图像=v= \o/
+    t.setScreen(screen_coordinate);
+    if (withinScreen(image, screen_coordinate))
+      drawTriangle(t, image, texture, zBuffer,
+                   intensity); // 能渲染出五颜六色的图像=v= \o/
     std::cerr << "draw f" << i << "\n";
   }
   image.flip_vertically();
-  image.write_tga_file(
-      "./images/african_head_triangle_light.tga");
-*/
+  image.write_tga_file("./images/african_head_triangle_light_back.tga");
+}
