@@ -21,7 +21,7 @@ bool Shader::fragment(Vec3f &bc, TGAColor &color) {
     uv_coordinate.x += bc[i] * uv[i].x;
     uv_coordinate.y += bc[i] * uv[i].y;
   }
-  TGAColor c(texture.get(uv_coordinate)); //* r_intensity);
+  TGAColor c(texture.get(uv_coordinate) * r_intensity);
   color = c;
   return false;
 }

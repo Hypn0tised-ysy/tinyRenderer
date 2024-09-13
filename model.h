@@ -34,10 +34,10 @@ public:
     return vertex(face(nth_face)[nth_vertex] - 1);
   }
   Vec2f uv(int const nth_face, int const nth_vertex) {
-    return texture(faceVn(nth_face)[nth_vertex] - 1);
+    return texture(faceVt(nth_face)[nth_vertex] - 1);
   }
   Vec3f norm(int const nth_face, int const nth_vertex) {
-    return normal(faceVt(nth_face)[nth_vertex] - 1);
+    return normal(faceVn(nth_face)[nth_vertex] - 1);
   }
 
 private:
