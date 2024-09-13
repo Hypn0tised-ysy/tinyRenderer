@@ -18,10 +18,10 @@ bool Shader::fragment(Vec3f &bc, TGAColor &color) {
   for (int i = 0; i < 3; i++) {
     float intensity = std::max(0.0f, normal[i].normalize() * light.normalize());
     r_intensity += intensity * bc[i];
-    uv_coordinate.x = bc[i] * uv[i].x;
-    uv_coordinate.y = bc[i] * uv[i].y;
+    uv_coordinate.x += bc[i] * uv[i].x;
+    uv_coordinate.y += bc[i] * uv[i].y;
   }
-  TGAColor c(texture.get(uv_coordinate) * r_intensity);
+  TGAColor c(texture.get(uv_coordinate)); //* r_intensity);
   color = c;
   return false;
 }

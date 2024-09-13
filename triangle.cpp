@@ -4,6 +4,7 @@
 #include "tgaimage.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <iostream>
 
 float getIntensity(Vec3f *objCoordinate, Vec3f &light) {
@@ -30,6 +31,21 @@ Vec2f objVtToScreen(TGAImage &texture, Vec2f &vtCoordinate) {
           vtCoordinate.v *
               height); // 注意这里需要翻转y坐标，因为贴图的坐标原点在屏幕左下角
   return uv;
+}
+Vec3f BarycentricInterpolation(Vec3i *screen_coordinate,
+                               Vec2i &point) // 求三角形的重心坐标
+{
+  Vec3f a = screen_coordinate[0], b = screen_coordinate[1],
+        c = screen_coordinate[2];
+  Vec3f v1(b.x - a.x, c.x - a.x, a.x - point.x);
+  Vec3f v2(b.y - a.y, c.y - a.y, a.y - point.y);
+  Vec3f bc = v1 ^ v2;
+  // 因为点坐标都是int类型，所以叉乘之后的向量模一定大于等于1，如果模小于1，说明是零向量，此时abc不构成三角形
+  float const EPSILON = 1e-2;
+  if (std::abs(bc.z) < EPSILON)
+    return Vec3f(-1, -1, -1);
+  bc = bc / bc.z;
+  return Vec3f(1.0 - (bc.x + bc.y), bc.x, bc.y);
 }
 Vec3f BarycentricInterpolation(Vec2i &point, Vec2f &a, Vec2f &b,
                                Vec2f &c) // 求三角形的重心坐标
@@ -131,7 +147,23 @@ void drawTriangle( // 逐行扫描
     line(x_1, y, x_2, y, image, color);
   }
 }
-
+bool insideTriangle(Vec3i *screen_coordinate, Vec2i &point) {
+  Vec3i a = screen_coordinate[0], b = screen_coordinate[1],
+        c = screen_coordinate[2];
+  Vec3i A(a.x, a.y, 0);
+  Vec3i B(b.x, b.y, 0);
+  Vec3i C(c.x, c.y, 0);
+  Vec3i P(point.x, point.y, 0);
+  Vec3i PA = A - P, PB = B - P, PC = C - P;
+  Vec3i cross1 = (PA ^ PB);
+  Vec3i cross2 = (PB ^ PC);
+  Vec3i cross3 = (PC ^ PA);
+  if ((cross1.z >= 0 && cross2.z >= 0 && cross3.z >= 0) ||
+      (cross1.z <= 0 && cross2.z <= 0 && cross3.z <= 0)) {
+    return true;
+  }
+  return false;
+}
 bool insideTriangle(int x, int y, const Vec2i &a, const Vec2i &b,
                     const Vec2i &c) {
   Vec3i A(a.x, a.y, 0);
