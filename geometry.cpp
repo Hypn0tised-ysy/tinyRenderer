@@ -1,5 +1,6 @@
 #include "geometry.h"
 #include <cassert>
+/*
 // 显式特化模板：从 Vec3<float> 转换到 Vec3<int>
 template <>
 template <>
@@ -13,6 +14,8 @@ template <>
 Vec3<float>::Vec3(const Vec3<int> &v)
     : x(static_cast<float>(v.x)), y(static_cast<float>(v.y)),
       z(static_cast<float>(v.z)) {}
+*/
+/*
 Matrix identity(int dimension) {
   Matrix matrix(dimension, dimension);
   for (int row = 0; row < dimension; row++) {
@@ -65,3 +68,19 @@ std::ostream &operator<<(std::ostream &out, Matrix &m) {
   out << "\n";
   return out;
 }
+*/
+// 类型转换
+template <>
+template <>
+vec<3, int>::vec(const vec<3, float> &v)
+    : x(int(v.x + .5f)), y(int(v.y + .5f)), z(int(v.z + .5f)) {}
+template <>
+template <>
+vec<3, float>::vec(const vec<3, int> &v) : x(v.x), y(v.y), z(v.z) {}
+template <>
+template <>
+vec<2, int>::vec(const vec<2, float> &v)
+    : x(int(v.x + .5f)), y(int(v.y + .5f)) {}
+template <>
+template <>
+vec<2, float>::vec(const vec<2, int> &v) : x(v.x), y(v.y) {}

@@ -393,7 +393,8 @@ void lineframe(TGAImage &image, Model *model, Matrix &trans) {
     float intensity[3];
     Vec3i screen_coordinate[3];
     for (int j = 0; j < 3; j++) {
-      screen_coordinate[j] = (trans * v2m(t.world_coordinate[j])).m2v();
+      screen_coordinate[j] =
+          proj<3, 4, float>(trans * embed<4, 3, float>(t.world_coordinate[j]));
     }
     t.setScreen(screen_coordinate);
 

@@ -34,7 +34,6 @@ Vec3f objToScreen(TGAImage &image, Vec3f &objCoordinate);
 Vec2f objVtToScreen(TGAImage &texture, Vec2f &vtCoordinate);
 void drawTriangle(Triangle &t, TGAImage &image, TGAImage &texture,
                   float *zBuffer, float *intensity);
-Matrix identity(int dimension); // 返回阶数为dimension的标准矩阵
 void rasterize(Model *model, TGAImage &image, TGAImage texture, float *zBuffer,
                Vec3f &light, Matrix &trans);
 void rasterizer(MyShader &shader, TGAImage &image, float *zBuffer);
@@ -44,7 +43,7 @@ Matrix Viewport(int x, int y, int width,
 Matrix
 Projection(Vec3f eye,
            Vec3f center); // 投影矩阵，将图像由camera的位置投影到z=0的平面
-inline Matrix ModelMatrix() { return identity(4); }
+inline Matrix ModelMatrix() { return Matrix::identity(); }
 Matrix View(Vec3f &eye, Vec3f &center, Vec3f &up); // 进行摄像机变换的矩阵
 bool withinScreen(TGAImage image,
                   Vec3f *pts) { // 判断三角形是不是在屏幕内
@@ -118,7 +117,7 @@ int main(int argc, char **argv) {
 }
 Matrix Viewport(int x, int y, int width,
                 int height) { //(x,y)是坐标原点，width和height分别是
-  Matrix viewport = identity(4);
+  Matrix viewport = Matrix::identity();
   viewport[0][0] = width / 2.0;
   viewport[1][1] = height / 2.0;
   viewport[2][2] = depth / 2.0;
@@ -131,7 +130,7 @@ Matrix Projection(
     Vec3f eye,
     Vec3f
         center) { // 投影矩阵在homogenous坐标下可以与待投影的点无关，需要一点小小的数学技巧
-  Matrix projection = identity(4);
+  Matrix projection = Matrix::identity();
   projection[3][2] = -1.0 / (center - eye).norm();
   return projection;
 }
@@ -140,7 +139,8 @@ Vec3f round(Vec3f vec) {
   return result;
 }
 Matrix View(Vec3f &eye, Vec3f &center, Vec3f &up) {
-  Matrix result, translation = identity(4), rotation = identity(4);
+  Matrix result, translation = Matrix::identity(),
+                 rotation = Matrix::identity();
   for (int i = 0; i < 3; i++) {
     translation[i][3] = -center[i];
   }
@@ -167,7 +167,8 @@ void rasterize(Model *model, TGAImage &image, TGAImage texture, float *zBuffer,
       intensity[j] = t.normal_coordinate[j].normalize() * light;
       if (intensity[j] < 0)
         intensity[j] = 0;
-      screen_coordinate[j] = (trans * v2m(t.world_coordinate[j])).m2v();
+      screen_coordinate[j] = proj<3, 4, float>(
+          (trans * embed<4, 3, float>(t.world_coordinate[j])));
     }
     t.setScreen(screen_coordinate);
     if (withinScreen(image, screen_coordinate))

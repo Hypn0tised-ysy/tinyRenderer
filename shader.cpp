@@ -10,7 +10,7 @@ Vec3f Shader::vertex(int nth_face, int nth_vertex) {
   Vec3f world_coordinate = model->vert(nth_face, nth_vertex);
   uv[nth_vertex] = model->uv(nth_face, nth_vertex);
   normal[nth_vertex] = model->norm(nth_face, nth_vertex);
-  return (trans * v2m(world_coordinate)).m2v();
+  return proj<3, 4, float>((trans * embed<4, 3, float>(world_coordinate)));
 }
 bool Shader::fragment(Vec3f &bc, TGAColor &color) {
   float r_intensity = 0.0;
