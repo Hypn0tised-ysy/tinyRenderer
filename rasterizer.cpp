@@ -7,8 +7,8 @@
 
 extern Model *model;
 extern Vec3f light;
-bool withinScreen(TGAImage image, Vec3i *pts);
-bool withinScreen(TGAImage image, Vec3f *pts);
+bool clip(TGAImage image, Vec3i *pts);
+bool clip(TGAImage image, Vec3f *pts);
 Vec3f BarycentricInterpolation(Vec3i *screen_coordinate, Vec2i &point);
 bool insideTriangle(Vec3i *screen_coordinate, Vec2i &point);
 void rasterizer(MyShader &shader, TGAImage &image, float *zBuffer) {
@@ -20,7 +20,7 @@ void rasterizer(MyShader &shader, TGAImage &image, float *zBuffer) {
       screen_coordinate[j] = shader.vertex(i, j);
     }
 
-    if (withinScreen(image, screen_coordinate))
+    if (clip(image, screen_coordinate))
       triangle(screen_coordinate, shader, image, zBuffer);
     std::cerr << "draw f" << i << "\n";
   }
