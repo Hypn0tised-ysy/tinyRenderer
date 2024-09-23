@@ -21,6 +21,7 @@ constexpr int width = 800;
 constexpr int height = 800;
 constexpr int depth = 255; // 把z坐标投影到[0,255]，输出z-buffer图像以供调试
 TGAImage image(width, height, TGAImage::RGB);
+TGAImage zbuffer_image(width, height, TGAImage::GRAYSCALE);
 // texture
 TGAImage texture;
 float *zBuffer = new float[width * height];
@@ -30,14 +31,9 @@ Vec3f up(0, 1, 0);
 Vec3f light = Vec3f(1, -1, 1).normalize();
 
 void lineframe(TGAImage &image, Model *model, Matrix &trans);
-Vec3f objToScreen(TGAImage &image, Vec3f &objCoordinate);
-Vec2f objVtToScreen(TGAImage &texture, Vec2f &vtCoordinate);
 void drawTriangle(Triangle &t, TGAImage &image, TGAImage &texture,
                   float *zBuffer, float *intensity);
-void rasterize(Model *model, TGAImage &image, TGAImage texture, float *zBuffer,
-               Vec3f &light, Matrix &trans);
 void rasterizer(MyShader &shader, TGAImage &image, float *zBuffer);
-Vec3f round(Vec3f vec); // 四舍五入
 Matrix Viewport(int x, int y, int width,
                 int height); // 将世界坐标转换到屏幕坐标的矩阵
 Matrix
@@ -45,8 +41,8 @@ Projection(Vec3f eye,
            Vec3f center); // 投影矩阵，将图像由camera的位置投影到z=0的平面
 inline Matrix ModelMatrix() { return Matrix::identity(); }
 Matrix View(Vec3f &eye, Vec3f &center, Vec3f &up); // 进行摄像机变换的矩阵
-bool withinScreen(TGAImage image,
-                  Vec3f *pts) { // 判断三角形是不是在屏幕内
+bool clip(TGAImage image,
+          Vec3f *pts) { // 判断三角形是不是在屏幕内
   int width = image.get_width(), height = image.get_height();
   return (pts[0].x >= 0 && pts[0].x <= width) &&
          (pts[0].y >= 0 && pts[0].y <= height) &&
@@ -55,8 +51,8 @@ bool withinScreen(TGAImage image,
          (pts[2].x >= 0 && pts[2].x <= width) &&
          (pts[2].y >= 0 && pts[2].y <= height);
 }
-bool withinScreen(TGAImage image,
-                  Vec3i *pts) { // 判断三角形是不是在屏幕内
+bool clip(TGAImage image,
+          Vec3i *pts) { // 判断三角形是不是在屏幕内
   int width = image.get_width(), height = image.get_height();
   return (pts[0].x >= 0 && pts[0].x <= width) &&
          (pts[0].y >= 0 && pts[0].y <= height) &&
@@ -94,22 +90,14 @@ int main(int argc, char **argv) {
   Shader shader;
   shader.setTrans(trans);
   rasterizer(shader, image, zBuffer);
-  // TGAImage frame(800, 800, TGAImage::GRAYSCALE);
-  // lineframe(frame, model, trans);
-  // rasterize(model, image, texture, zBuffer, light, trans);
-  //  rasterize
-  //  rasterizeTexture(model, image, texture, zBuffer, light);
-  //  rasterizeCamera(model, image, texture, zBuffer, camera, light);
-  //  dump z-buffer (debugging purposes only)
-  TGAImage zbimage(width, height, TGAImage::GRAYSCALE);
   for (int i = 0; i < width; i++) {
     for (int j = 0; j < height; j++) {
-      zbimage.set(i, j, TGAColor(zBuffer[i + j * width], 1));
+      zbuffer_image.set(i, j, TGAColor(zBuffer[i + j * width], 1));
     }
   }
-  zbimage.flip_vertically(); // i want to have the origin at the left bottom
-                             // corner of the image
-  zbimage.write_tga_file("./images/zbuffer.tga");
+  zbuffer_image.flip_vertically(); // i want to have the origin at the left
+                                   // bottom corner of the image
+  zbuffer_image.write_tga_file("./images/zbuffer.tga");
   //
   std::cout << model_matrix << view << projection << viewport;
   delete model;
@@ -171,7 +159,7 @@ void rasterize(Model *model, TGAImage &image, TGAImage texture, float *zBuffer,
           (trans * embed<4, 3, float>(t.world_coordinate[j])));
     }
     t.setScreen(screen_coordinate);
-    if (withinScreen(image, screen_coordinate))
+    if (clip(image, screen_coordinate))
       drawTriangle(t, image, texture, zBuffer,
                    intensity); // 能渲染出五颜六色的图像=v= \o/
     std::cerr << "draw f" << i << "\n";
