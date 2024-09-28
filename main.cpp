@@ -34,13 +34,7 @@ void lineframe(TGAImage &image, Model *model, Matrix &trans);
 void drawTriangle(Triangle &t, TGAImage &image, TGAImage &texture,
                   float *zBuffer, float *intensity);
 void rasterizer(MyShader &shader, TGAImage &image, float *zBuffer);
-Matrix Viewport(int x, int y, int width,
-                int height); // 将世界坐标转换到屏幕坐标的矩阵
-Matrix
-Projection(Vec3f eye,
-           Vec3f center); // 投影矩阵，将图像由camera的位置投影到z=0的平面
-inline Matrix ModelMatrix() { return Matrix::identity(); }
-Matrix View(Vec3f &eye, Vec3f &center, Vec3f &up); // 进行摄像机变换的矩阵
+
 bool clip(TGAImage image,
           Vec3f *pts) { // 判断三角形是不是在屏幕内
   int width = image.get_width(), height = image.get_height();
@@ -80,15 +74,11 @@ int main(int argc, char **argv) {
           -std::numeric_limits<float>::
               max()) // 别用std::numeric_limits<float>::min()因为它表示的大于0的最小float
     ;
-  Matrix model_matrix = ModelMatrix();
-  Matrix view = View(camera, center, up);
-  Matrix projection = Projection(camera, center);
-  Matrix viewport =
-      Viewport(width / 8, height / 8, width * 3 / 4, height * 3 / 4);
-
-  Matrix trans = viewport * projection * view * model_matrix;
-  Shader shader;
-  shader.setTrans(trans);
+  ModelMatrix();
+  View(camera, center, up);
+  Projection(camera, center);
+  Viewport(width / 8, height / 8, width * 3 / 4, height * 3 / 4);
+  GouraudShader shader;
   rasterizer(shader, image, zBuffer);
   for (int i = 0; i < width; i++) {
     for (int j = 0; j < height; j++) {
@@ -97,73 +87,6 @@ int main(int argc, char **argv) {
   }
   zbuffer_image.flip_vertically(); // i want to have the origin at the left
                                    // bottom corner of the image
-  zbuffer_image.write_tga_file("./images/zbuffer.tga");
-  //
-  std::cout << model_matrix << view << projection << viewport;
   delete model;
   return 0;
-}
-Matrix Viewport(int x, int y, int width,
-                int height) { //(x,y)是坐标原点，width和height分别是
-  Matrix viewport = Matrix::identity();
-  viewport[0][0] = width / 2.0;
-  viewport[1][1] = height / 2.0;
-  viewport[2][2] = depth / 2.0;
-  viewport[0][3] = x + width / 2.0;
-  viewport[1][3] = y + height / 2.0;
-  viewport[2][3] = depth / 2.0;
-  return viewport;
-}
-Matrix Projection(
-    Vec3f eye,
-    Vec3f
-        center) { // 投影矩阵在homogenous坐标下可以与待投影的点无关，需要一点小小的数学技巧
-  Matrix projection = Matrix::identity();
-  projection[3][2] = -1.0 / (center - eye).norm();
-  return projection;
-}
-Vec3f round(Vec3f vec) {
-  Vec3f result(int(vec.x + 0.5), int(vec.y + 0.5), int(vec.z + 0.5));
-  return result;
-}
-Matrix View(Vec3f &eye, Vec3f &center, Vec3f &up) {
-  Matrix result, translation = Matrix::identity(),
-                 rotation = Matrix::identity();
-  for (int i = 0; i < 3; i++) {
-    translation[i][3] = -center[i];
-  }
-  Vec3f u, v, w, gaze = center - eye;
-  w = (-gaze).normalize();
-  u = (up ^ w).normalize();
-  v = w ^ u;
-  for (int i = 0; i < 3; i++) {
-    rotation[0][i] = u[i];
-    rotation[1][i] = v[i];
-    rotation[2][i] = w[i];
-  }
-  result = rotation * translation;
-  return result;
-}
-void rasterize(Model *model, TGAImage &image, TGAImage texture, float *zBuffer,
-               Vec3f &light, Matrix &trans) {
-
-  for (int i = 0; i < model->nface(); i++) {
-    Triangle t = model->getTriangle(i);
-    float intensity[3];
-    Vec3i screen_coordinate[3];
-    for (int j = 0; j < 3; j++) {
-      intensity[j] = t.normal_coordinate[j].normalize() * light;
-      if (intensity[j] < 0)
-        intensity[j] = 0;
-      screen_coordinate[j] = proj<3, 4, float>(
-          (trans * embed<4, 3, float>(t.world_coordinate[j])));
-    }
-    t.setScreen(screen_coordinate);
-    if (clip(image, screen_coordinate))
-      drawTriangle(t, image, texture, zBuffer,
-                   intensity); // 能渲染出五颜六色的图像=v= \o/
-    std::cerr << "draw f" << i << "\n";
-  }
-  image.flip_vertically();
-  image.write_tga_file("./images/african_head_triangle_light_back.tga");
 }
