@@ -29,6 +29,7 @@ Vec3f camera(1, 1, 3);
 Vec3f center(0, 0, 0);
 Vec3f up(0, 1, 0);
 Vec3f light = Vec3f(1, -1, 1).normalize();
+Vec3f spot_light = Vec3f(1, -1, 1);
 
 void lineframe(TGAImage &image, Model *model, Matrix &trans);
 void drawTriangle(Triangle &t, TGAImage &image, TGAImage &texture,
@@ -78,6 +79,7 @@ int main(int argc, char **argv) {
   View(camera, center, up);
   Projection(camera, center);
   Viewport(width / 8, height / 8, width * 3 / 4, height * 3 / 4);
+  Rotation(camera, center, up);
   GouraudShader shader;
   rasterizer(shader, image, zBuffer);
   for (int i = 0; i < width; i++) {

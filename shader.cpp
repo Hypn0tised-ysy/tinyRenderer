@@ -10,7 +10,38 @@ Matrix model_matrix;
 Matrix view;
 Matrix projection;
 Matrix viewport;
+Matrix rotation;
+// gouraud shader
 Vec3f GouraudShader::vertex(int nth_face, int nth_vertex) {
+  Vec3f world_coordinate = model->vert(nth_face, nth_vertex);
+  uv[nth_vertex] = model->uv(nth_face, nth_vertex);
+  normal[nth_vertex] = proj<3>(
+      (view * model_matrix).invert_transpose() *
+      embed<4>(model->norm(
+          nth_face,
+          nth_vertex))); // 用于变换法向量的矩阵应该是变换模型坐标的矩阵的逆的转置
+  return proj<3>((viewport * projection * view * model_matrix) *
+                 embed<4>(world_coordinate));
+}
+bool GouraudShader::fragment(Vec3f &bc, TGAColor &color) {
+  float r_intensity;
+
+  Vec2f uv_coordinate(0, 0);
+
+  for (int i = 0; i < 3; i++) {
+    Vec3f trans_light = proj<3>(view * model_matrix * embed<4>(light));
+    float intensity = std::max(0.0f, normal[i].normalize() * light.normalize());
+    r_intensity += intensity * bc[i];
+    uv_coordinate.x += bc[i] * uv[i].x;
+    uv_coordinate.y += bc[i] * uv[i].y;
+  }
+  TGAColor c(texture.get(uv_coordinate) * r_intensity);
+  color = c;
+  return false;
+}
+/////////////////////////////////////////////////////////////////////////////////////////////
+// bling phong shader
+Vec3f Bling_phong_shader::vertex(int nth_face, int nth_vertex) {
   Vec3f world_coordinate = model->vert(nth_face, nth_vertex);
   uv[nth_vertex] = model->uv(nth_face, nth_vertex);
   normal[nth_vertex] = proj<3>(
@@ -21,8 +52,10 @@ Vec3f GouraudShader::vertex(int nth_face, int nth_vertex) {
   return proj<3>((viewport * projection * view * model_matrix) *
                  embed<4>(world_coordinate));
 }
-bool GouraudShader::fragment(Vec3f &bc, TGAColor &color) {
+bool Bling_phong_shader::fragment(Vec3f &bc, TGAColor &color) {
   float r_intensity = 0.0;
+  float specular_intensity, diffuse_intensity,
+      ambient_intensity; // 暂时不考虑光强分量不同的情况，比如蓝色的漫射光
   Vec2f uv_coordinate(0, 0);
   for (int i = 0; i < 3; i++) {
     float intensity = std::max(0.0f, normal[i].normalize() * light.normalize());
@@ -34,6 +67,8 @@ bool GouraudShader::fragment(Vec3f &bc, TGAColor &color) {
   color = c;
   return false;
 }
+/////////////////////////////////////////////////////////////////////////////////////////////
+// matrix
 void Viewport(int x, int y, int width,
               int height) { //(x,y)是坐标原点，width和height分别是
   viewport = Matrix::identity();
@@ -67,4 +102,17 @@ void View(Vec3f &eye, Vec3f &center, Vec3f &up) {
   }
   view = rotation * translation;
 }
+void Rotation(Vec3f &eye, Vec3f &center, Vec3f &up) {
+  rotation = Matrix::identity();
+  Vec3f u, v, w, gaze = center - eye;
+  w = (-gaze).normalize();
+  u = (up ^ w).normalize();
+  v = w ^ u;
+  for (int i = 0; i < 3; i++) {
+    rotation[0][i] = u[i];
+    rotation[1][i] = v[i];
+    rotation[2][i] = w[i];
+  }
+}
 void ModelMatrix() { model_matrix = Matrix::identity(); }
+/////////////////////////////////////////////////////////////////////////////////////////////
