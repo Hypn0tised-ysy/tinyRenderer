@@ -3,9 +3,12 @@
 #include "model.h"
 #include "tgaimage.h"
 #include <algorithm>
+#include <cmath>
 extern Model *model;
 extern TGAImage texture;
 extern Vec3f light;
+extern Vec3f spot_light;
+extern Vec3f camera;
 Matrix model_matrix;
 Matrix view;
 Matrix projection;
@@ -27,10 +30,11 @@ bool GouraudShader::fragment(Vec3f &bc, TGAColor &color) {
   float r_intensity;
 
   Vec2f uv_coordinate(0, 0);
+  Vec3f trans_light =
+      proj<3>(view * model_matrix * embed<4>(light)).normalize();
 
   for (int i = 0; i < 3; i++) {
-    Vec3f trans_light = proj<3>(view * model_matrix * embed<4>(light));
-    float intensity = std::max(0.0f, normal[i].normalize() * light.normalize());
+    float intensity = std::max(0.0f, normal[i].normalize() * trans_light);
     r_intensity += intensity * bc[i];
     uv_coordinate.x += bc[i] * uv[i].x;
     uv_coordinate.y += bc[i] * uv[i].y;
@@ -43,9 +47,11 @@ bool GouraudShader::fragment(Vec3f &bc, TGAColor &color) {
 // bling phong shader
 Vec3f Bling_phong_shader::vertex(int nth_face, int nth_vertex) {
   Vec3f world_coordinate = model->vert(nth_face, nth_vertex);
+  view_coord[nth_vertex] =
+      proj<3>(view * model_matrix * embed<4>(world_coordinate));
   uv[nth_vertex] = model->uv(nth_face, nth_vertex);
   normal[nth_vertex] = proj<3>(
-      (viewport * projection * view * model_matrix).invert_transpose() *
+      (view * model_matrix).invert_transpose() *
       embed<4>(model->norm(
           nth_face,
           nth_vertex))); // 用于变换法向量的矩阵应该是变换模型坐标的矩阵的逆的转置
@@ -53,16 +59,41 @@ Vec3f Bling_phong_shader::vertex(int nth_face, int nth_vertex) {
                  embed<4>(world_coordinate));
 }
 bool Bling_phong_shader::fragment(Vec3f &bc, TGAColor &color) {
-  float r_intensity = 0.0;
-  float specular_intensity, diffuse_intensity,
-      ambient_intensity; // 暂时不考虑光强分量不同的情况，比如蓝色的漫射光
+  float r_intensity = 0.0; // 计算的最终亮度
+  float specular_intensity = 0.0, diffuse_intensity = 0.0,
+        ambient_intensity =
+            0.0; // 暂时不考虑光强分量不同的情况，比如蓝色的漫射光
+  float intensity = 1.0f; // 光的强度
+  float ambient_light = 10.0f;
+  Vec3f trans_spot_light =
+      proj<3>((view * model_matrix) * embed<4>(spot_light)); // 变换点光源位置
+  Vec3f bc_view_coord = Vec3f(0, 0, 0); // 着色点插值后的坐标
   Vec2f uv_coordinate(0, 0);
+  Vec3f bc_normal = Vec3f(
+      0, 0,
+      0); // 插值后的法向量,因为重心坐标和法向量都是单位向量，插值后可以不归一化
   for (int i = 0; i < 3; i++) {
-    float intensity = std::max(0.0f, normal[i].normalize() * light.normalize());
-    r_intensity += intensity * bc[i];
-    uv_coordinate.x += bc[i] * uv[i].x;
-    uv_coordinate.y += bc[i] * uv[i].y;
+    bc_view_coord += bc[i] * view_coord[i];
+    bc_normal += bc[i] * normal[i];
+    uv_coordinate += bc[i] * uv[i];
   }
+  float distance = sqrt((trans_spot_light - bc_view_coord).norm());
+  float r2 = distance * distance; // r square
+  Vec3f l = (trans_spot_light - bc_view_coord)
+                .normalize(); // 物体（着色点）到光源连线的法向量
+  Vec3f v = (proj<3>(view * model_matrix * embed<4>(camera)) - bc_view_coord)
+                .normalize(); // 从着色点到camera的法向量
+  Vec3f h = (v + l).normalize();
+  diffuse_intensity = kd * (intensity / r2) * std::max(0.0f, bc_normal * l);
+  float inter1 = bc_normal.normalize() * h.normalize();
+  float inter =
+      pow(std::max(0.0f, bc_normal.normalize() * h.normalize()), power);
+  specular_intensity =
+      ks * (intensity / r2) *
+      pow(std::max(0.0f, bc_normal.normalize() * h.normalize()), power);
+  ambient_intensity = ka * ambient_light;
+  r_intensity = std::min(
+      diffuse_intensity + specular_intensity + ambient_intensity, 1.0f);
   TGAColor c(texture.get(uv_coordinate) * r_intensity);
   color = c;
   return false;

@@ -30,15 +30,17 @@ public:
 };
 class Bling_phong_shader : public MyShader {
 public:
-  Bling_phong_shader(float _ks, float _kd, float _ka)
-      : ks(_ks), kd(_kd), ka(_ka) {}
+  Bling_phong_shader(float _ks, float _kd, float _ka, int _power)
+      : ks(_ks), kd(_kd), ka(_ka), power(_power) {}
   void setAttributes();
   void setUV(Vec2f *uv);
   void setNormal(Vec3f *normal);
   virtual Vec3f vertex(int nth_face, int nth_vertex);
   virtual bool fragment(Vec3f &bc, TGAColor &color);
   float ks, kd, ka;
+  int power; // 调节镜面反射效果
   Vec2f uv[3];
   Vec3f normal[3];
+  Vec3f view_coord[3];
 };
 #endif

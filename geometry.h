@@ -248,6 +248,11 @@ operator+(vec<dim, T> lhs,
     ;
   return lhs;
 }
+template <size_t dim, typename T>
+vec<dim, T> &operator+=(vec<dim, T> &lhs, vec<dim, T> const &rhs) {
+  lhs = lhs + rhs;
+  return lhs;
+}
 // 减
 template <size_t dim, typename T>
 vec<dim, T>

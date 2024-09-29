@@ -29,7 +29,7 @@ Vec3f camera(1, 1, 3);
 Vec3f center(0, 0, 0);
 Vec3f up(0, 1, 0);
 Vec3f light = Vec3f(1, -1, 1).normalize();
-Vec3f spot_light = Vec3f(1, -1, 1);
+Vec3f spot_light = Vec3f(1, -1, 3);
 
 void lineframe(TGAImage &image, Model *model, Matrix &trans);
 void drawTriangle(Triangle &t, TGAImage &image, TGAImage &texture,
@@ -81,7 +81,9 @@ int main(int argc, char **argv) {
   Viewport(width / 8, height / 8, width * 3 / 4, height * 3 / 4);
   Rotation(camera, center, up);
   GouraudShader shader;
-  rasterizer(shader, image, zBuffer);
+  Bling_phong_shader bling_phong_shader(0.7937, 2.0, 0.01, 50);
+  // rasterizer(shader, image, zBuffer);
+  rasterizer(bling_phong_shader, image, zBuffer);
   for (int i = 0; i < width; i++) {
     for (int j = 0; j < height; j++) {
       zbuffer_image.set(i, j, TGAColor(zBuffer[i + j * width], 1));
@@ -89,6 +91,8 @@ int main(int argc, char **argv) {
   }
   zbuffer_image.flip_vertically(); // i want to have the origin at the left
                                    // bottom corner of the image
+  extern Matrix projection, model_matrix, view, viewport;
+  std::cout << model_matrix << view << projection << viewport;
   delete model;
   return 0;
 }

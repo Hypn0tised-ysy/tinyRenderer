@@ -26,7 +26,7 @@ void rasterizer(MyShader &shader, TGAImage &image, float *zBuffer) {
   }
 
   image.flip_vertically();
-  image.write_tga_file("./images/african_head_triangle_light_back.tga");
+  image.write_tga_file("./images/african_head_phong.tga");
 }
 void triangle(Vec3i *screen_coordinate, MyShader &shader, TGAImage &image,
               float *zBuffer) {
